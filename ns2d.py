@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from map import *
 from variable import *
+from scipy.sparse import lil_matrix
 
 
 #
@@ -14,8 +15,8 @@ setting = {
             'dim'       :   [30,40],
             'delta'     :   [1.0,1.0],
             'T'         :   [0.4,10,20],
-            'pBC'       :   [1.0,0.0],
-            'pIC'       :   1000.0,
+            'pBC'       :   0.0,
+            'vBC'       :   1e-5,
             'sBC'       :   [1.0, 0.0],
             'sIC'       :   0.0,
             'rho'       :   1000.0,
@@ -37,6 +38,17 @@ def main(setting):
         data.matrixRHS(map, setting)
         data.buildMatrix(map, setting)
         data.solve()
+        # if tstep == setting['T'][1]-1:
+        #     Ad = lil_matrix.todense(data.A)
+        #     for ii in range(data.Ni):
+        #         alst = []
+        #         for jj in range(data.Ni):
+        #             alst.append(Ad[ii,jj])
+        #         print(alst)
+        #     for ii in range(data.Ni):
+        #         print(data.B[ii])
+        #     for ii in range(data.Ni):
+        #         print(data.x[ii])
         data.enforcePressureBC(map, setting)
         data.updateVelocity(map, setting)
         data.enforceVelocityBC(map, setting)
@@ -57,7 +69,7 @@ def makePlot(data, setting):
     v_max = np.amax(abs(v))
     fig, ax = plt.subplots()
     ax1 = plt.subplot(2,2,1)
-    plt.imshow(p, vmin=setting['pBC'][1], vmax=setting['pBC'][0])
+    plt.imshow(p)
     cbar = plt.colorbar()
     ax1 = plt.subplot(2,2,2)
     plt.imshow(s, vmin=setting['sBC'][1], vmax=setting['sBC'][0])
