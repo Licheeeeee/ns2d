@@ -94,15 +94,12 @@ class Variable():
         for ii in range(self.Ni):
             self.up[ii] = -self.Gx * (self.pp[map.iPjc[ii]] - self.pp[ii]) + self.Ex[ii]
             self.vp[ii] = -self.Gy * (self.pp[map.icjP[ii]] - self.pp[ii]) + self.Ey[ii]
-            # self.up[ii] = self.roundTo(self.up[ii],18)
-            # self.vp[ii] = self.roundTo(self.vp[ii],18)
 
     def enforcePressureBC(self, map, setting):
         """ Enforce BC on pressure """
         for ii in range(self.Nx):
             jj = self.Nx * (self.Ny-1) + ii
             self.pp[map.icjM[ii]] = self.pp[ii]
-            # self.pp[map.icjP[jj]] = 2.0 * self.pp[jj] - self.pp[map.icjM[jj]]
             self.pp[jj] = self.pBC
             self.pp[map.icjP[jj]] = self.pp[jj]
         for ii in range(self.Ny):
@@ -118,11 +115,8 @@ class Variable():
             jj = self.Nx * (self.Ny-1) + ii
             self.up[map.icjM[ii]] = self.up[ii]
             self.up[map.icjP[jj]] = self.up[jj]
-            # self.vp[ii] = self.vBC
             self.vp[map.icjM[ii]] = self.vBC
             self.vp[jj] = self.vp[map.icjM[jj]] + (self.up[map.iMjc[jj]]-self.up[jj]) * self.Ax / self.Ay
-            # self.vp[map.icjP[jj]] = self.vp[jj]
-            # self.vp[map.icjP[jj]] = self.vp[jj] + (self.up[map.iMjc[jj]]-self.up[jj]) * self.Ax / self.Ay
         for ii in range(self.Ny):
             jj = ii * self.Nx
             kk = (ii+1) * self.Nx - 1
@@ -131,6 +125,12 @@ class Variable():
             self.up[map.iPjc[kk]] = self.up[kk]
             self.vp[map.iMjc[jj]] = self.vp[jj]
             self.vp[map.iPjc[kk]] = self.vp[kk]
+    
+    def updateVariables(self, setting):
+        for ii in range(self.Nt):
+            self.un[ii] = self.up[ii]
+            self.vn[ii] = self.vp[ii]
+            self.pn[ii] = self.pp[ii]
 
     def buildMatrix(self, map, setting):
         """ Build sparse matrix A """
@@ -140,27 +140,26 @@ class Variable():
             #   For Neumann boundary
             if map.iMjc[ii] >= self.Ni:
                 self.A[ii,ii] -= self.Gx
-                self.A[ii,ii] = self.roundTo(self.A[ii,ii],10)
+                self.A[ii,ii] = self.roundTo(self.A[ii,ii])
             else:
                 self.A[ii,ii-1] = -self.Gx
             if map.iPjc[ii] >= self.Ni:
                 self.A[ii,ii] -= self.Gx
-                self.A[ii,ii] = self.roundTo(self.A[ii,ii],10)
+                self.A[ii,ii] = self.roundTo(self.A[ii,ii])
             else:
                 self.A[ii,ii+1] = -self.Gx
             #   For Direchlet boundary
             if map.icjM[ii] >= self.Ni:
                 self.A[ii,ii] -= self.Gy
-                self.A[ii,ii] = self.roundTo(self.A[ii,ii],10)
+                self.A[ii,ii] = self.roundTo(self.A[ii,ii])
             else:
                 self.A[ii,ii-self.Nx] = -self.Gy
             if map.icjP[ii] >= self.Ni:
                 self.A[ii,ii] -= self.Gy
-                self.A[ii,ii] = self.roundTo(self.A[ii,ii],10)
+                self.A[ii,ii] = self.roundTo(self.A[ii,ii])
                 # self.B[ii] += self.Gy * self.pBC[1]
             else:
                 self.A[ii,ii+self.Nx] = -self.Gy
-
         #   Enforce pressure BC
         for ii in range(self.Ni):
             # if map.icjM[ii] >= self.Ni:
@@ -181,15 +180,11 @@ class Variable():
     def solve(self):
         """ Solve the linear system Ax = B """
         for ii in range(self.Ni):
-            self.B[ii] = self.roundTo(self.B[ii],17)
+            self.B[ii] = self.roundTo(self.B[ii],10)
         self.x = spsolve(self.A, self.B)
         for ii in range(self.Ni):
-            self.un[ii] = self.up[ii]
-            self.vn[ii] = self.vp[ii]
-            self.pn[ii] = self.pp[ii]
             self.pp[ii] = self.x[ii]
-            # print(ii, self.pp[ii])
-            self.pp[ii] = self.roundTo(self.x[ii],15)
+            self.pp[ii] = self.roundTo(self.x[ii])
 
     def roundTo(self, n, m=6):
         return round(n, m)

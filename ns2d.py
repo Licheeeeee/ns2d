@@ -12,15 +12,15 @@ from scipy.sparse import lil_matrix
 #
 plot = True
 setting = {
-            'dim'       :   [30,40],
-            'delta'     :   [1.0,1.0],
-            'T'         :   [0.4,10,20],
-            'pBC'       :   0.0,
-            'vBC'       :   1e-5,
+            'dim'       :   [100,150],
+            'delta'     :   [10.0,10.0],
+            'T'         :   [10.0,30,20],
+            'pBC'       :   10000.0,
+            'vBC'       :   1e-3,
             'sBC'       :   [1.0, 0.0],
             'sIC'       :   0.0,
             'rho'       :   1000.0,
-            'nu'        :   0.0001
+            'nu'        :   0.00001
 }
 
 #
@@ -38,20 +38,21 @@ def main(setting):
         data.matrixRHS(map, setting)
         data.buildMatrix(map, setting)
         data.solve()
-        # if tstep == setting['T'][1]-1:
-        #     Ad = lil_matrix.todense(data.A)
-        #     for ii in range(data.Ni):
-        #         alst = []
-        #         for jj in range(data.Ni):
-        #             alst.append(Ad[ii,jj])
-        #         print(alst)
-        #     for ii in range(data.Ni):
-        #         print(data.B[ii])
-        #     for ii in range(data.Ni):
-        #         print(data.x[ii])
+#        if tstep == setting['T'][1]-1:
+#            Ad = lil_matrix.todense(data.A)
+#            for ii in range(data.Ni):
+#                alst = []
+#                for jj in range(data.Ni):
+#                    alst.append(Ad[ii,jj])
+#                print(alst)
+#            for ii in range(data.Ni):
+#                print(data.B[ii])
+#            for ii in range(data.Ni):
+#                print(data.pp[ii])
         data.enforcePressureBC(map, setting)
         data.updateVelocity(map, setting)
         data.enforceVelocityBC(map, setting)
+        data.updateVariables(setting)
         print('Time step ',str(tstep),' executed!')
         # if tstep % setting['T'][2] == 0:
         #     makePlot(data, setting)
