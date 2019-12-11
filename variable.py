@@ -15,6 +15,7 @@ class Variable():
         self.dt = setting['T'][0]
         self.rho = setting['rho']
         self.nu = setting['nu']
+        self.ka = setting['kappa']
         self.pBC = setting['pBC']
         self.vBC = setting['vBC']
         self.sBC = setting['sBC']
@@ -37,6 +38,8 @@ class Variable():
         for ii in range(self.Nx):
             self.vn[map.icjM[ii]] = self.vBC
             self.vp[map.icjM[ii]] = self.vBC
+            self.sn[map.icjM[ii]] = self.sBC
+            self.sp[map.icjM[ii]] = self.sBC
         #   Matrix coefficients
         self.Gx = self.dt * self.Ax / (self.rho * self.V)
         self.Gy = self.dt * self.Ay / (self.rho * self.V)
@@ -131,6 +134,7 @@ class Variable():
             self.un[ii] = self.up[ii]
             self.vn[ii] = self.vp[ii]
             self.pn[ii] = self.pp[ii]
+            self.sn[ii] = self.sp[ii]
 
     def buildMatrix(self, map, setting):
         """ Build sparse matrix A """
@@ -188,3 +192,45 @@ class Variable():
 
     def roundTo(self, n, m=6):
         return round(n, m)
+        
+    def transport(self, map, setting):
+        """ Calculate the explicit terms """
+        for ii in range(self.Ni):
+            #   Transverse velocity
+            if map.icjP[ii] < self.Ni:
+                indU = map.iMjc[map.icjP[ii]]
+            elif map.iMjc[ii] < self.Ni:
+                indU = map.icjP[map.iMjc[ii]]
+            else:
+                indU = map.icjP[ii]
+            if map.iPjc[ii] < self.Ni:
+                indV = map.icjM[map.iPjc[ii]]
+            elif map.icjM[ii] < self.Ni:
+                indV = map.iPjc[map.icjM[ii]]
+            else:
+                indV = map.icjM[ii]
+            ut = 0.25 * (self.up[ii] + self.up[map.iMjc[ii]] + self.up[map.icjP[ii]] + self.up[indU])
+            vt = 0.25 * (self.vp[ii] + self.vp[map.iPjc[ii]] + self.vp[map.icjM[ii]] + self.vp[indV])
+            #   Explicit velocity
+            self.sp[ii] = self.sn[ii]
+            self.sp[ii] = self.sn[ii]
+            #   Advection terms
+            self.sp[ii] -= (0.5 * self.dt / self.dx) * ((self.up[ii] + abs(self.up[ii])) * (self.sn[ii] - self.sn[map.iMjc[ii]]) + (self.up[ii] - abs(self.up[ii])) * (self.sn[ii] - self.sn[map.iPjc[ii]]))
+            self.sp[ii] -= (0.5 * self.dt / self.dy) * ((vt + abs(vt)) * (self.sn[ii] - self.sn[map.icjM[ii]]) + (vt - abs(vt)) * (self.sn[ii] - self.sn[map.icjP[ii]]))
+            self.sp[ii] -= (0.5 * self.dt / self.dx) * ((ut + abs(ut)) * (self.sn[ii] - self.sn[map.iMjc[ii]]) + (ut - abs(ut)) * (self.sn[ii] - self.sn[map.iPjc[ii]]))
+            self.sp[ii] -= (0.5 * self.dt / self.dy) * ((self.vn[ii] + abs(self.vn[ii])) * (self.sn[ii] - self.sn[map.icjM[ii]]) + (self.vn[ii] - abs(self.vn[ii])) * (self.sn[ii] - self.sn[map.icjP[ii]]))
+            #   Diffusion terms
+            self.sp[ii] += (self.dt * self.ka * self.Ax / (self.dx * self.V)) * (self.sn[map.iPjc[ii]] - 2.0*self.sn[ii] + self.sn[map.iMjc[ii]])
+            self.sp[ii] += (self.dt * self.ka * self.Ay / (self.dy * self.V)) * (self.sn[map.icjP[ii]] - 2.0*self.sn[ii] + self.sn[map.icjM[ii]])
+            self.sp[ii] += (self.dt * self.ka * self.Ax / (self.dx * self.V)) * (self.sn[map.iPjc[ii]] - 2.0*self.sn[ii] + self.sn[map.iMjc[ii]])
+            self.sp[ii] += (self.dt * self.ka * self.Ay / (self.dy * self.V)) * (self.sn[map.icjP[ii]] - 2.0*self.sn[ii] + self.sn[map.icjM[ii]])
+        #   Boundary conditions
+        for ii in range(self.Nx):
+            jj = self.Nx * (self.Ny-1) + ii
+            self.sp[map.icjM[ii]] = self.sBC
+            self.sp[map.icjP[jj]] = self.sp[jj]
+        for ii in range(self.Ny):
+            jj = ii * self.Nx
+            kk = (ii+1) * self.Nx - 1
+            self.sp[map.iMjc[jj]] = self.sp[jj]
+            self.sp[map.iPjc[kk]] = self.sp[kk]
