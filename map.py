@@ -3,13 +3,14 @@ import numpy as np
 
 class Map():
     """ Define cell connections """
-    def __init__(self, setting):
+    def __init__(self, block, setting):
         self.Nx = setting['dim'][0]
         self.Ny = setting['dim'][1]
         self.dx = setting['dim'][0]
         self.dy = setting['dim'][1]
         self.Ni = self.Nx * self.Ny
         self.Nt = (self.Nx+2) * (self.Ny+2)
+        self.block = np.ravel(block,order='F')
         #   Build 2D (row,col) index of 1D cell
         self.row = []
         self.col = []

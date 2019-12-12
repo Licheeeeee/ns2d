@@ -29,6 +29,10 @@ class Variable():
         self.pp = self.pBC * np.ones(self.Nt)
         self.sn = self.sIC * np.ones(self.Nt)
         self.sp = self.sIC * np.ones(self.Nt)
+        for ii in range(self.Ni):
+            if map.col[ii] <= int(self.Ny/4) and map.block[ii] == 0:
+                self.sn[ii] = self.sBC
+                self.sp[ii] = self.sBC
         self.B = np.zeros((self.Ni,1))
         #   Variables on cell faces
         self.un = np.zeros(self.Nt)
@@ -41,9 +45,29 @@ class Variable():
             self.sn[map.icjM[ii]] = self.sBC
             self.sp[map.icjM[ii]] = self.sBC
         #   Matrix coefficients
-        self.Gx = self.dt * self.Ax / (self.rho * self.V)
-        self.Gy = self.dt * self.Ay / (self.rho * self.V)
-        self.Gc = 2.0 * self.Gx + 2.0 * self.Gy
+        self.Gx = self.dt * self.Ax / (self.rho * self.V) * np.ones((self.Ni))
+        self.Gy = self.dt * self.Ay / (self.rho * self.V) * np.ones((self.Ni))
+        self.Gc = np.zeros((self.Ni))
+        for ii in range(self.Ni):
+            if map.block[ii] == 1:
+                self.Gx[ii] = 0.0
+                self.Gy[ii] = 0.0
+                if map.iMjc[ii] < self.Ni:
+                    self.Gx[map.iMjc[ii]] = 0.0
+                if map.icjM[ii] < self.Ni:
+                    self.Gy[map.icjM[ii]] = 0.0
+            if map.iPjc[ii] >= self.Ni:
+                self.Gx[ii] = 0.0
+        for ii in range(self.Ni):
+            self.Gc[ii] = self.Gx[ii] + self.Gy[ii]
+            # print('ii : ',ii,' Gc,Gx,Gy=',self.Gc[ii],self.Gx[ii],self.Gy[ii])
+            if map.iMjc[ii] < self.Ni:
+                self.Gc[ii] += self.Gx[map.iMjc[ii]]
+                # print('GxiM=',self.Gx[map.iMjc[ii]])
+            if map.icjM[ii] < self.Ni:
+                self.Gc[ii] += self.Gy[map.icjM[ii]]
+                # print('GxjM=',self.Gy[map.icjM[ii]])
+            # print(self.Gc[ii])
 
     def explicitSource(self, map, setting):
         """ Calculate the explicit terms """
@@ -78,6 +102,11 @@ class Variable():
             self.Ex[ii] += (self.dt * self.nu * self.Ay / (self.dy * self.V)) * (self.un[map.icjP[ii]] - 2.0*self.un[ii] + self.un[map.icjM[ii]])
             self.Ey[ii] += (self.dt * self.nu * self.Ax / (self.dx * self.V)) * (self.vn[map.iPjc[ii]] - 2.0*self.vn[ii] + self.vn[map.iMjc[ii]])
             self.Ey[ii] += (self.dt * self.nu * self.Ay / (self.dy * self.V)) * (self.vn[map.icjP[ii]] - 2.0*self.vn[ii] + self.vn[map.icjM[ii]])
+            #   Zero on blocked faces
+            if self.Gx[ii] == 0.0:
+                self.Ex[ii] = 0.0
+            if self.Gy[ii] == 0.0:
+                self.Ey[ii] = 0.0
         for ii in range(self.Nx):
             jj = map.icjM[ii]
             self.Ey[jj] = self.vn[jj]
@@ -95,8 +124,8 @@ class Variable():
     def updateVelocity(self, map, setting):
         """ Update velocity based on pressure """
         for ii in range(self.Ni):
-            self.up[ii] = -self.Gx * (self.pp[map.iPjc[ii]] - self.pp[ii]) + self.Ex[ii]
-            self.vp[ii] = -self.Gy * (self.pp[map.icjP[ii]] - self.pp[ii]) + self.Ey[ii]
+            self.up[ii] = -self.Gx[ii] * (self.pp[map.iPjc[ii]] - self.pp[ii]) + self.Ex[ii]
+            self.vp[ii] = -self.Gy[ii] * (self.pp[map.icjP[ii]] - self.pp[ii]) + self.Ey[ii]
 
     def enforcePressureBC(self, map, setting):
         """ Enforce BC on pressure """
@@ -113,6 +142,13 @@ class Variable():
 
     def enforceVelocityBC(self, map, setting):
         """ Enforce BC on velocity """
+        #   BC on blocked cells
+        for ii in range(self.Ni):
+            if map.block[ii] == 1:
+                self.up[ii] = 0.0
+                self.up[map.iMjc[ii]] = 0.0
+                self.vp[ii] = 0.0
+                self.vp[map.icjM[ii]] = 0.0
         #   BC on ghost cells
         for ii in range(self.Nx):
             jj = self.Nx * (self.Ny-1) + ii
@@ -128,7 +164,7 @@ class Variable():
             self.up[map.iPjc[kk]] = self.up[kk]
             self.vp[map.iMjc[jj]] = self.vp[jj]
             self.vp[map.iPjc[kk]] = self.vp[kk]
-    
+
     def updateVariables(self, setting):
         for ii in range(self.Nt):
             self.un[ii] = self.up[ii]
@@ -140,39 +176,32 @@ class Variable():
         """ Build sparse matrix A """
         self.A = lil_matrix((self.Ni, self.Ni), dtype=float)
         for ii in range(self.Ni):
-            self.A[ii,ii] = self.Gc
+            self.A[ii,ii] = self.Gc[ii]
             #   For Neumann boundary
             if map.iMjc[ii] >= self.Ni:
-                self.A[ii,ii] -= self.Gx
+                # self.A[ii,ii] -= self.Gx[ii]
                 self.A[ii,ii] = self.roundTo(self.A[ii,ii])
             else:
-                self.A[ii,ii-1] = -self.Gx
+                self.A[ii,ii-1] = -self.Gx[map.iMjc[ii]]
             if map.iPjc[ii] >= self.Ni:
-                self.A[ii,ii] -= self.Gx
+                # self.A[ii,ii] -= self.Gx[ii]
                 self.A[ii,ii] = self.roundTo(self.A[ii,ii])
             else:
-                self.A[ii,ii+1] = -self.Gx
+                self.A[ii,ii+1] = -self.Gx[ii]
             #   For Direchlet boundary
             if map.icjM[ii] >= self.Ni:
-                self.A[ii,ii] -= self.Gy
+                # self.A[ii,ii] -= self.Gy[ii]
                 self.A[ii,ii] = self.roundTo(self.A[ii,ii])
             else:
-                self.A[ii,ii-self.Nx] = -self.Gy
+                self.A[ii,ii-self.Nx] = -self.Gy[map.icjM[ii]]
             if map.icjP[ii] >= self.Ni:
-                self.A[ii,ii] -= self.Gy
+                # self.A[ii,ii] -= self.Gy[ii]
                 self.A[ii,ii] = self.roundTo(self.A[ii,ii])
                 # self.B[ii] += self.Gy * self.pBC[1]
             else:
-                self.A[ii,ii+self.Nx] = -self.Gy
+                self.A[ii,ii+self.Nx] = -self.Gy[ii]
         #   Enforce pressure BC
         for ii in range(self.Ni):
-            # if map.icjM[ii] >= self.Ni:
-            #     self.A[ii,ii] = 1.0
-            #     self.A[ii,ii+1] = 0.0
-            #     self.A[ii,ii+self.Nx] = 0.0
-            #     self.B[ii] = self.pBC[0]
-            #     if ii > 0:
-            #         self.A[ii,ii-1] = 0.0
             if map.icjP[ii] >= self.Ni:
                 self.A[ii,ii] = 1.0
                 self.A[ii,ii-1] = 0.0
@@ -180,11 +209,24 @@ class Variable():
                 self.B[ii] = self.pBC
                 if ii < self.Ni-1:
                     self.A[ii,ii+1] = 0.0
+        #    Enforce blocked BC
+        for ii in range(self.Ni):
+            if map.block[ii] == 1:
+                self.A[ii,ii] = 1.0
+                self.B[ii] = 1.0
+                if ii-1 >= 0:
+                    self.A[ii,ii-1] = 0.0
+                if ii+1 < self.Ni:
+                    self.A[ii,ii+1] = 0.0
+                if ii-self.Nx >= 0:
+                    self.A[ii,ii-self.Nx] = 0.0
+                if ii+self.Nx < self.Ni:
+                    self.A[ii,ii+self.Nx] = 0.0
 
     def solve(self):
         """ Solve the linear system Ax = B """
         for ii in range(self.Ni):
-            self.B[ii] = self.roundTo(self.B[ii],10)
+            self.B[ii] = self.roundTo(self.B[ii],6)
         self.x = spsolve(self.A, self.B)
         for ii in range(self.Ni):
             self.pp[ii] = self.x[ii]
@@ -192,7 +234,7 @@ class Variable():
 
     def roundTo(self, n, m=6):
         return round(n, m)
-        
+
     def transport(self, map, setting):
         """ Calculate the explicit terms """
         for ii in range(self.Ni):
