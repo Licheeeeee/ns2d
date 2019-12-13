@@ -12,9 +12,9 @@ from scipy.sparse import lil_matrix
 #
 plot = True
 setting = {
-            'dim'       :   [20,30],
+            'dim'       :   [4,5],
             'delta'     :   [1.0,1.0],
-            'T'         :   [1.0,50,20],
+            'T'         :   [1.0,2,20],
             'pBC'       :   10000.0,
             'vBC'       :   1e-3,
             'sBC'       :   100.0,
@@ -28,7 +28,7 @@ inner = block[:,int(setting['dim'][0]/5):int(4*setting['dim'][0]/5)]
 indim = inner.shape
 for jj in range(indim[1]):
     inner[:min(int(indim[0]/3),int(jj*indim[0]/indim[1])),jj] = 1
-    inner[max(int(2*indim[0]/3),int(jj*indim[0]/indim[1])):,jj] = 1
+    inner[max(int(2*indim[0]/3+1),int(jj*indim[0]/indim[1]+1)):,jj] = 1
 for jj in range(int(indim[1]/3)):
     inner[int(2*indim[0]/3):int(indim[0] - jj*indim[0]/indim[1]),jj] = 0
 for jj in range(int(2*indim[1]/3),indim[1]):

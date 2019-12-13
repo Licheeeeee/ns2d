@@ -87,8 +87,19 @@ class Variable():
                 indV = map.iPjc[map.icjM[ii]]
             else:
                 indV = map.icjM[ii]
-            ut = 0.25 * (self.un[ii] + self.un[map.iMjc[ii]] + self.un[map.icjP[ii]] + self.un[indU])
-            vt = 0.25 * (self.vn[ii] + self.vn[map.iPjc[ii]] + self.vn[map.icjM[ii]] + self.vn[indV])
+
+            u4 = np.array((self.un[ii],self.un[map.iMjc[ii]],self.un[map.icjP[ii]],self.un[indU]))
+            is0 = u4 != 0
+            if np.nansum(is0) == 0:
+                ut = 0.0
+            else:
+                ut = np.nansum(u4) / np.nansum(is0)
+            v4 = np.array((self.vn[ii],self.vn[map.iPjc[ii]],self.vn[map.icjM[ii]],self.vn[indV]))
+            is0 = v4 != 0
+            if np.nansum(is0) == 0:
+                vt = 0.0
+            else:
+                vt = np.nansum(v4) / np.nansum(is0)
             #   Explicit velocity
             self.Ex[ii] = self.un[ii]
             self.Ey[ii] = self.vn[ii]
