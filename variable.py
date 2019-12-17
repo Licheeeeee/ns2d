@@ -19,6 +19,8 @@ class Variable():
         self.vBC = setting['vBC']
         self.sBC = setting['sBC']
         self.sIC = setting['sIC']
+        self.BCtype = setting['BCtype']
+        self.compre = setting['compre']
         #   Variables that remain constants for now
         self.V = self.dx * self.dy
         self.Ax = self.dy
@@ -40,16 +42,17 @@ class Variable():
         self.vn = np.zeros(self.Nt)
         self.vp = np.zeros(self.Nt)
         for ii in range(self.Nx):
-            # self.vn[map.icjM[ii]] = self.vBC
-            # self.vp[map.icjM[ii]] = self.vBC
+            if 'v' in self.BCtype[0]:
+                # self.vn[ii] = self.vBC
+                # self.vp[ii] = self.vBC
+                self.vn[map.icjM[ii]] = self.vBC
+                self.vp[map.icjM[ii]] = self.vBC
             self.sn[map.icjM[ii]] = self.sBC
             self.sp[map.icjM[ii]] = self.sBC
         #   Matrix coefficients
         self.Gx = (self.dt * self.Ax)**2.0 / (self.rho * self.V) * np.ones((self.Ni))
         self.Gy = (self.dt * self.Ay)**2.0 / (self.rho * self.V) * np.ones((self.Ni))
-        self.Gc = (3e7 * self.V / self.rho) * np.ones((self.Ni))
-        # self.Gc = 2.0 * self.Gx + 2.0 * self.Gy
-        # self.Gc = np.zeros((self.Ni))
+        self.Gc = (self.compre[0] * self.V / self.rho) * np.ones((self.Ni))
         for ii in range(self.Ni):
             if map.block[ii] == 1:
                 self.Gx[ii] = 0.0
@@ -58,6 +61,7 @@ class Variable():
                     self.Gx[map.iMjc[ii]] = 0.0
                 if map.icjM[ii] < self.Ni:
                     self.Gy[map.icjM[ii]] = 0.0
+            # Block the iP face
             if map.iPjc[ii] >= self.Ni:
                 self.Gx[ii] = 0.0
         for ii in range(self.Ni):
@@ -67,8 +71,9 @@ class Variable():
                 self.Gc[ii] += self.Gx[map.iMjc[ii]]
             if map.icjM[ii] < self.Ni:
                 self.Gc[ii] += self.Gy[map.icjM[ii]]
-            # if map.icjP[ii] >= self.Ni:
-            #     self.Gc[ii] -= self.Gy[ii]
+            if map.icjP[ii] >= self.Ni and 'p' not in self.BCtype[1]:
+                self.Gc[ii] -= self.Gy[ii]
+
             # print(self.Gc[ii])
 
     def explicitSource(self, map, setting):
@@ -132,7 +137,7 @@ class Variable():
         """ Calculate right-hand-side of the linear system """
         self.B = np.zeros(self.Ni)
         for ii in range(self.Ni):
-            self.B[ii] += (3e7 * self.V / self.rho[ii]) * self.pn[ii]
+            self.B[ii] += (self.compre[0] * self.V / self.rho[ii]) * self.pn[ii]
             self.B[ii] += self.dt * (self.Ax * (-self.Ex[ii] + self.Ex[map.iMjc[ii]]) \
                 - self.Ay * (self.Ey[ii] + self.Ey[map.icjM[ii]]))
 
@@ -140,7 +145,9 @@ class Variable():
         """ Update velocity based on pressure """
         for ii in range(self.Ni):
             # print('ii, P, Pip, pjp = ',ii, self.pp[ii], self.pp[map.iPjc[ii]], self.pp[map.icjP[ii]])
+            pdiff = self.roundTo(self.pp[map.iPjc[ii]] - self.pp[ii])
             self.up[ii] = -(self.dt*self.Ax / (self.rho[ii]*self.V)) * (self.pp[map.iPjc[ii]] - self.pp[ii]) + self.Ex[ii]
+            pdiff = self.roundTo(self.pp[map.icjP[ii]] - self.pp[ii])
             self.vp[ii] = -(self.dt*self.Ay / (self.rho[ii]*self.V)) * (self.pp[map.icjP[ii]] - self.pp[ii]) + self.Ey[ii]
 
     def enforcePressureBC(self, map, setting):
@@ -170,9 +177,16 @@ class Variable():
             jj = self.Nx * (self.Ny-1) + ii
             self.up[map.icjM[ii]] = self.up[ii]
             self.up[map.icjP[jj]] = self.up[jj]
-            # self.vp[map.icjM[ii]] = self.vBC
-            self.vp[map.icjM[ii]] = self.vp[ii]
-            self.vp[jj] = self.vp[map.icjM[jj]] + (self.up[map.iMjc[jj]]-self.up[jj]) * self.Ax / self.Ay
+            udiff = self.roundTo(self.up[map.iMjc[jj]]-self.up[jj])
+            pdiff = self.roundTo(self.pp[jj]-self.pn[jj])
+            self.vp[jj] = self.vp[map.icjM[jj]] + udiff * self.Ax / self.Ay
+            # print(pdiff, self.vp[jj],self.vp[jj]+(self.compre[0]*self.V / (self.rho[jj]*self.dt*self.Ay)) * pdiff)
+            self.vp[jj] += (self.compre[0]*self.V / (self.rho[jj]*self.dt*self.Ay)) * pdiff
+            if 'v' in self.BCtype[0]:
+                self.vp[map.icjM[ii]] = self.vBC
+                # self.vp[ii] = self.vBC
+            else:
+                self.vp[map.icjM[ii]] = self.vp[ii]
         for ii in range(self.Ny):
             jj = ii * self.Nx
             kk = (ii+1) * self.Nx - 1
@@ -208,19 +222,19 @@ class Variable():
             #   For Direchlet boundary
             if map.icjM[ii] >= self.Ni:
                 self.A[ii,ii] = self.roundTo(self.A[ii,ii])
-            elif map.icjM[ii] < self.Nx:
+            elif map.icjM[ii] < self.Nx and 'p' in self.BCtype[0]:
                 self.B[ii] += self.Gy[map.icjM[ii]] * self.pBC[0]
             else:
                 self.A[ii,ii-self.Nx] = -self.Gy[map.icjM[ii]]
             if map.icjP[ii] >= self.Ni:
                 self.A[ii,ii] = self.roundTo(self.A[ii,ii])
-            elif map.icjP[ii] >= self.Ni-self.Nx:
+            elif map.icjP[ii] >= self.Ni-self.Nx and 'p' in self.BCtype[1]:
                 self.B[ii] += self.Gy[ii] * self.pBC[1]
             else:
                 self.A[ii,ii+self.Nx] = -self.Gy[ii]
         #   Enforce pressure BC
         for ii in range(self.Ni):
-            if map.icjP[ii] >= self.Ni:
+            if map.icjP[ii] >= self.Ni and 'p' in self.BCtype[1]:
                 self.A[ii,ii] = 1.0
                 self.A[ii,ii-self.Nx] = 0.0
                 self.B[ii] = self.pBC[1]
@@ -228,7 +242,7 @@ class Variable():
                     self.A[ii,ii-1] = 0.0
                 if ii < self.Ni-1:
                     self.A[ii,ii+1] = 0.0
-            if map.icjM[ii] >= self.Ni:
+            if map.icjM[ii] >= self.Ni and 'p' in self.BCtype[0]:
                 self.A[ii,ii] = 1.0
                 self.A[ii,ii+self.Nx] = 0.0
                 self.B[ii] = self.pBC[0]
@@ -263,7 +277,7 @@ class Variable():
             #     print(self.x[ii])
             # print(self.pp[ii])
 
-    def roundTo(self, n, m=8):
+    def roundTo(self, n, m=6):
         return round(n, m)
 
     def transport(self, map, setting):
